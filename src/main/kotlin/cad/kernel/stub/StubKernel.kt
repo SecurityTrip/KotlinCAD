@@ -7,6 +7,7 @@ import cad.domain.tree.TreeSnapshot
 import cad.kernel.Kernel
 import cad.kernel.mesh.Mesh
 import cad.kernel.mesh.Primitives
+import cad.kernel.mesh.translated
 import org.slf4j.LoggerFactory
 
 /**
@@ -22,7 +23,10 @@ class StubKernel : Kernel {
             val w = feature.parameters["width"]?.value?.toFloat() ?: 1f
             val h = feature.parameters["height"]?.value?.toFloat() ?: 1f
             val d = feature.depth.toFloat()
-            Primitives.cube(w, h, d)
+            val px = (feature.parameters["posX"]?.value ?: 0.0).toFloat()
+            val py = (feature.parameters["posY"]?.value ?: 0.0).toFloat()
+            val pz = (feature.parameters["posZ"]?.value ?: 0.0).toFloat()
+            Primitives.cube(w, h, d).translated(px, py, pz)
         }
 
         is Feature.Sketch -> Mesh.EMPTY

@@ -52,8 +52,7 @@ sealed interface Feature {
         val entities: List<SketchEntity>,
         override val parameters: Map<String, Parameter> = emptyMap(),
     ) : Feature {
-        override fun withParameters(newParameters: Map<String, Parameter>) =
-            copy(parameters = newParameters)
+        override fun withParameters(newParameters: Map<String, Parameter>) = copy(parameters = newParameters)
 
         override fun referencedFeatures(): Set<FeatureId> = emptySet()
     }
@@ -67,8 +66,7 @@ sealed interface Feature {
     ) : Feature {
         val depth: Double get() = parameters["depth"]?.value ?: 1.0
 
-        override fun withParameters(newParameters: Map<String, Parameter>) =
-            copy(parameters = newParameters)
+        override fun withParameters(newParameters: Map<String, Parameter>) = copy(parameters = newParameters)
 
         override fun referencedFeatures(): Set<FeatureId> = setOf(sketchId)
     }
@@ -83,8 +81,7 @@ sealed interface Feature {
     ) : Feature {
         val angleDeg: Double get() = parameters["angle"]?.value ?: 360.0
 
-        override fun withParameters(newParameters: Map<String, Parameter>) =
-            copy(parameters = newParameters)
+        override fun withParameters(newParameters: Map<String, Parameter>) = copy(parameters = newParameters)
 
         override fun referencedFeatures(): Set<FeatureId> = setOf(sketchId)
     }
@@ -98,8 +95,7 @@ sealed interface Feature {
         val op: BoolOp,
         override val parameters: Map<String, Parameter> = emptyMap(),
     ) : Feature {
-        override fun withParameters(newParameters: Map<String, Parameter>) =
-            copy(parameters = newParameters)
+        override fun withParameters(newParameters: Map<String, Parameter>) = copy(parameters = newParameters)
 
         override fun referencedFeatures(): Set<FeatureId> = setOf(left, right)
     }

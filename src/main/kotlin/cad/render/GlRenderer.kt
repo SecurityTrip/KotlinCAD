@@ -1,5 +1,6 @@
 package cad.render
 
+import cad.domain.feature.FeatureId
 import cad.kernel.mesh.Mesh
 import org.joml.Matrix3f
 import org.joml.Matrix4f
@@ -78,6 +79,16 @@ private data class GpuMesh(
     val indexCount: Int,
 )
 
+/**
+ * Содержит GPU-handle для фичи + identity исходного Mesh-инстанса.
+ * Если AppViewModel переиспользует тот же Mesh-объект из кэша,
+ * `System.identityHashCode` совпадёт и мы пропустим повторную заливку VBO.
+ */
+private data class GpuMeshEntry(
+    val meshIdentity: Int,
+    val gpu: GpuMesh,
+)
+
 class GlRenderer {
     private val log = LoggerFactory.getLogger(GlRenderer::class.java)
 
@@ -88,7 +99,7 @@ class GlRenderer {
     private var gridVbo = 0
     private var gridVertexCount = 0
 
-    private val gpuMeshes = mutableMapOf<Long, GpuMesh>()
+    private val gpuMeshes = mutableMapOf<FeatureId, GpuMeshEntry>()
     private var lastSceneRevision = -1L
 
     fun init() {
@@ -160,14 +171,14 @@ class GlRenderer {
         glEnable(GL_POLYGON_OFFSET_FILL)
         glPolygonOffset(1f, 1f)
         for (sm in scene.meshes) {
-            val gpu = gpuMeshes[sm.featureId.value.hashCode().toLong()] ?: continue
+            val entry = gpuMeshes[sm.featureId] ?: continue
             val color = if (sm.featureId == scene.selected) Vector3f(0.95f, 0.7f, 0.25f)
             else Vector3f(0.75f, 0.78f, 0.82f)
             setMat4(solidProgram, "uModel", model)
             setMat3(solidProgram, "uNormalMat", Matrix3f(model).invert().transpose())
             setVec3(solidProgram, "uColor", color.x, color.y, color.z)
-            glBindVertexArray(gpu.vao)
-            glDrawElements(GL_TRIANGLES, gpu.indexCount, GL_UNSIGNED_INT, 0L)
+            glBindVertexArray(entry.gpu.vao)
+            glDrawElements(GL_TRIANGLES, entry.gpu.indexCount, GL_UNSIGNED_INT, 0L)
         }
         glDisable(GL_POLYGON_OFFSET_FILL)
 
@@ -179,21 +190,30 @@ class GlRenderer {
         setVec3(flatProgram, "uColor", 0.08f, 0.08f, 0.1f)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         for (sm in scene.meshes) {
-            val gpu = gpuMeshes[sm.featureId.value.hashCode().toLong()] ?: continue
-            glBindVertexArray(gpu.vao)
-            glDrawElements(GL_TRIANGLES, gpu.indexCount, GL_UNSIGNED_INT, 0L)
+            val entry = gpuMeshes[sm.featureId] ?: continue
+            glBindVertexArray(entry.gpu.vao)
+            glDrawElements(GL_TRIANGLES, entry.gpu.indexCount, GL_UNSIGNED_INT, 0L)
         }
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
         glBindVertexArray(0)
     }
 
     private fun syncSceneToGpu(scene: Scene) {
-        // Простой подход: всё пересоздаём при изменении сцены.
-        // Когда станет узким местом — добавим diff по revision per-mesh.
-        gpuMeshes.values.forEach { releaseGpuMesh(it) }
-        gpuMeshes.clear()
+        // Diff per-mesh: удаляем то, чего больше нет, перезаливаем только то,
+        // у чего сменился Mesh-инстанс (см. AppViewModel.meshCache —
+        // переиспользованный из кэша Mesh имеет тот же identity и не вызывает re-upload).
+        val keep = scene.meshes.mapTo(HashSet()) { it.featureId }
+        gpuMeshes.entries.removeAll { (id, entry) ->
+            if (id !in keep) {
+                releaseGpuMesh(entry.gpu); true
+            } else false
+        }
         for (sm in scene.meshes) {
-            gpuMeshes[sm.featureId.value.hashCode().toLong()] = uploadMesh(sm.mesh)
+            val identity = System.identityHashCode(sm.mesh)
+            val existing = gpuMeshes[sm.featureId]
+            if (existing != null && existing.meshIdentity == identity) continue
+            existing?.let { releaseGpuMesh(it.gpu) }
+            gpuMeshes[sm.featureId] = GpuMeshEntry(identity, uploadMesh(sm.mesh))
         }
     }
 
@@ -241,7 +261,7 @@ class GlRenderer {
     }
 
     fun dispose() {
-        gpuMeshes.values.forEach { releaseGpuMesh(it) }
+        gpuMeshes.values.forEach { releaseGpuMesh(it.gpu) }
         gpuMeshes.clear()
         if (gridVbo != 0) glDeleteBuffers(gridVbo)
         if (gridVao != 0) glDeleteVertexArrays(gridVao)
