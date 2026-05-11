@@ -19,9 +19,7 @@ val appModule = module {
 
 private fun resolveKernel(): Kernel {
     val log = LoggerFactory.getLogger("cad.app.Kernel")
-    return runCatching { ManifoldKernel() }
-        .onSuccess { log.info("Kernel: ManifoldKernel") }
-        .getOrElse { t ->
+    return runCatching { ManifoldKernel() }.onSuccess { log.info("Kernel: ManifoldKernel") }.getOrElse { t ->
             log.warn("Falling back to StubKernel: {}", t.message)
             StubKernel()
         }

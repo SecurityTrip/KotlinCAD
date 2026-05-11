@@ -37,10 +37,7 @@ fun FeatureTreePanel(vm: AppViewModel, modifier: Modifier = Modifier) {
                     else Color.Transparent
                     Text(
                         text = labelFor(f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(bg)
-                            .clickable { vm.select(f.id) }
+                        modifier = Modifier.fillMaxWidth().background(bg).clickable { vm.select(f.id) }
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     )
                 }

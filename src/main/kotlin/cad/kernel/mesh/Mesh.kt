@@ -24,6 +24,21 @@ class Mesh(
     }
 }
 
+/**
+ * Возвращает новый Mesh со сдвинутыми вершинами. Нормали не меняем —
+ * чистый translate их не трогает.
+ */
+fun Mesh.translated(dx: Float, dy: Float, dz: Float): Mesh {
+    if (dx == 0f && dy == 0f && dz == 0f) return this
+    val v = vertices.copyOf()
+    var i = 0
+    while (i < v.size) {
+        v[i] += dx; v[i + 1] += dy; v[i + 2] += dz
+        i += 3
+    }
+    return Mesh(v, normals.copyOf(), indices.copyOf())
+}
+
 class MeshBuilder {
     private val verts = ArrayList<Float>()
     private val norms = ArrayList<Float>()

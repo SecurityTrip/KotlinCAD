@@ -62,8 +62,7 @@ object NativeLoader {
     private fun extractToTemp(resourcePath: String, fileName: String): Path {
         val stream = NativeLoader::class.java.getResourceAsStream(resourcePath)
             ?: error("Native library not found in classpath: $resourcePath")
-        val dir = Path.of(System.getProperty("java.io.tmpdir"), "cad", "native")
-            .createDirectories()
+        val dir = Path.of(System.getProperty("java.io.tmpdir"), "cad", "native").createDirectories()
         val target = dir.resolve(fileName)
         stream.use { input -> Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
         return target

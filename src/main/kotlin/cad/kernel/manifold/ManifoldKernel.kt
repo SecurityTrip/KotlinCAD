@@ -7,6 +7,7 @@ import cad.domain.feature.SketchEntity
 import cad.domain.tree.TreeSnapshot
 import cad.kernel.Kernel
 import cad.kernel.mesh.Mesh
+import cad.kernel.mesh.translated
 import cad.native_.NativeLoader
 import org.slf4j.LoggerFactory
 import java.lang.foreign.Arena
@@ -34,8 +35,7 @@ class ManifoldKernel : Kernel {
     init {
         NativeLoader.ensureManifoldLoaded().getOrThrow()
         require(jextractBindingsPresent()) {
-            "jextract bindings (cad.native_.manifold.Manifoldc) not on classpath. " +
-                    "Run `gradlew jextract` after placing native/include/manifold/manifoldc.h."
+            "jextract bindings (cad.native_.manifold.Manifoldc) not on classpath. " + "Run `gradlew jextract` after placing native/include/manifold/manifoldc.h."
         }
         log.info("ManifoldKernel ready")
     }
@@ -44,10 +44,13 @@ class ManifoldKernel : Kernel {
         when (feature) {
             is Feature.Sketch -> Mesh.EMPTY
             is Feature.Extrude -> {
-                val sketch = snapshot.features[feature.sketchId] as? Feature.Sketch
-                    ?: return@wrap Mesh.EMPTY
+                val sketch = snapshot.features[feature.sketchId] as? Feature.Sketch ?: return@wrap Mesh.EMPTY
                 val profile = sketchToProfile(sketch) ?: return@wrap Mesh.EMPTY
-                extrude(profile, feature.depth)
+                val raw = extrude(profile, feature.depth)
+                val px = (feature.parameters["posX"]?.value ?: 0.0).toFloat()
+                val py = (feature.parameters["posY"]?.value ?: 0.0).toFloat()
+                val pz = (feature.parameters["posZ"]?.value ?: 0.0).toFloat()
+                raw.translated(px, py, pz)
             }
 
             is Feature.BooleanFeature -> {
@@ -98,9 +101,7 @@ class ManifoldKernel : Kernel {
     private fun sketchToProfile(sketch: Feature.Sketch): Profile2D? {
         // MVP: первый Rectangle → Profile2D.rectangle. Когда появятся настоящие
         // sketches с несколькими entities — собирать polygon из их объединения.
-        val rect = sketch.entities
-            .filterIsInstance<SketchEntity.Rectangle>()
-            .firstOrNull() ?: return null
+        val rect = sketch.entities.filterIsInstance<SketchEntity.Rectangle>().firstOrNull() ?: return null
         return Profile2D.rectangle(rect.centerX, rect.centerY, rect.width, rect.height)
     }
 
@@ -118,5 +119,12 @@ class ManifoldKernel : Kernel {
         } catch (_: ClassNotFoundException) {
             false
         }
+
+        /**
+         * Не бросая, проверяет — можно ли вообще инстанциировать ManifoldKernel
+         * в текущем окружении. Используется в тестах через `assumeTrue`,
+         * чтобы integration-тесты пропускались на машинах без DLL.
+         */
+        fun canLoad(): Boolean = NativeLoader.ensureManifoldLoaded().isSuccess && jextractBindingsPresent()
     }
 }
