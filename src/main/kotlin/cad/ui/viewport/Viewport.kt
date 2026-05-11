@@ -101,7 +101,9 @@ private class CanvasHolder(
     }
 
     private fun attachInteractions(c: AWTGLCanvas) {
-        var lastX = 0; var lastY = 0; var button = 0
+        var lastX = 0;
+        var lastY = 0;
+        var button = 0
         c.addMouseListener(object : MouseAdapter() {
             override fun mousePressed(e: MouseEvent) {
                 lastX = e.x; lastY = e.y; button = e.button

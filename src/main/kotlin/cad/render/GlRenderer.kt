@@ -4,10 +4,68 @@ import cad.kernel.mesh.Mesh
 import org.joml.Matrix3f
 import org.joml.Matrix4f
 import org.joml.Vector3f
-import org.lwjgl.opengl.GL11C.*
-import org.lwjgl.opengl.GL15C.*
-import org.lwjgl.opengl.GL20C.*
-import org.lwjgl.opengl.GL30C.*
+import org.lwjgl.opengl.GL11C.GL_BACK
+import org.lwjgl.opengl.GL11C.GL_CCW
+import org.lwjgl.opengl.GL11C.GL_COLOR_BUFFER_BIT
+import org.lwjgl.opengl.GL11C.GL_CULL_FACE
+import org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT
+import org.lwjgl.opengl.GL11C.GL_DEPTH_TEST
+import org.lwjgl.opengl.GL11C.GL_FALSE
+import org.lwjgl.opengl.GL11C.GL_FILL
+import org.lwjgl.opengl.GL11C.GL_FLOAT
+import org.lwjgl.opengl.GL11C.GL_FRONT_AND_BACK
+import org.lwjgl.opengl.GL11C.GL_LEQUAL
+import org.lwjgl.opengl.GL11C.GL_LINE
+import org.lwjgl.opengl.GL11C.GL_LINES
+import org.lwjgl.opengl.GL11C.GL_POLYGON_OFFSET_FILL
+import org.lwjgl.opengl.GL11C.GL_TRIANGLES
+import org.lwjgl.opengl.GL11C.GL_UNSIGNED_INT
+import org.lwjgl.opengl.GL11C.glClear
+import org.lwjgl.opengl.GL11C.glClearColor
+import org.lwjgl.opengl.GL11C.glCullFace
+import org.lwjgl.opengl.GL11C.glDepthFunc
+import org.lwjgl.opengl.GL11C.glDisable
+import org.lwjgl.opengl.GL11C.glDrawArrays
+import org.lwjgl.opengl.GL11C.glDrawElements
+import org.lwjgl.opengl.GL11C.glEnable
+import org.lwjgl.opengl.GL11C.glFrontFace
+import org.lwjgl.opengl.GL11C.glPolygonMode
+import org.lwjgl.opengl.GL11C.glPolygonOffset
+import org.lwjgl.opengl.GL11C.glViewport
+import org.lwjgl.opengl.GL15C.GL_ARRAY_BUFFER
+import org.lwjgl.opengl.GL15C.GL_ELEMENT_ARRAY_BUFFER
+import org.lwjgl.opengl.GL15C.GL_STATIC_DRAW
+import org.lwjgl.opengl.GL15C.glBindBuffer
+import org.lwjgl.opengl.GL15C.glBufferData
+import org.lwjgl.opengl.GL15C.glDeleteBuffers
+import org.lwjgl.opengl.GL15C.glGenBuffers
+import org.lwjgl.opengl.GL20C.GL_COMPILE_STATUS
+import org.lwjgl.opengl.GL20C.GL_FRAGMENT_SHADER
+import org.lwjgl.opengl.GL20C.GL_LINK_STATUS
+import org.lwjgl.opengl.GL20C.GL_VERTEX_SHADER
+import org.lwjgl.opengl.GL20C.glAttachShader
+import org.lwjgl.opengl.GL20C.glCompileShader
+import org.lwjgl.opengl.GL20C.glCreateProgram
+import org.lwjgl.opengl.GL20C.glCreateShader
+import org.lwjgl.opengl.GL20C.glDeleteProgram
+import org.lwjgl.opengl.GL20C.glDeleteShader
+import org.lwjgl.opengl.GL20C.glEnableVertexAttribArray
+import org.lwjgl.opengl.GL20C.glGetProgramInfoLog
+import org.lwjgl.opengl.GL20C.glGetProgrami
+import org.lwjgl.opengl.GL20C.glGetShaderInfoLog
+import org.lwjgl.opengl.GL20C.glGetShaderi
+import org.lwjgl.opengl.GL20C.glGetUniformLocation
+import org.lwjgl.opengl.GL20C.glLinkProgram
+import org.lwjgl.opengl.GL20C.glShaderSource
+import org.lwjgl.opengl.GL20C.glUniform1f
+import org.lwjgl.opengl.GL20C.glUniform3f
+import org.lwjgl.opengl.GL20C.glUniformMatrix3fv
+import org.lwjgl.opengl.GL20C.glUniformMatrix4fv
+import org.lwjgl.opengl.GL20C.glUseProgram
+import org.lwjgl.opengl.GL20C.glVertexAttribPointer
+import org.lwjgl.opengl.GL30C.glBindVertexArray
+import org.lwjgl.opengl.GL30C.glDeleteVertexArrays
+import org.lwjgl.opengl.GL30C.glGenVertexArrays
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 import org.slf4j.LoggerFactory
@@ -104,7 +162,7 @@ class GlRenderer {
         for (sm in scene.meshes) {
             val gpu = gpuMeshes[sm.featureId.value.hashCode().toLong()] ?: continue
             val color = if (sm.featureId == scene.selected) Vector3f(0.95f, 0.7f, 0.25f)
-                        else Vector3f(0.75f, 0.78f, 0.82f)
+            else Vector3f(0.75f, 0.78f, 0.82f)
             setMat4(solidProgram, "uModel", model)
             setMat3(solidProgram, "uNormalMat", Matrix3f(model).invert().transpose())
             setVec3(solidProgram, "uColor", color.x, color.y, color.z)

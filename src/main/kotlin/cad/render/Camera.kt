@@ -31,7 +31,7 @@ class Camera {
         computeBasis(right, up, Vector3f())
         val k = distance * 0.0015f
         target.fma(-dxPx * k, right)
-        target.fma( dyPx * k, up)
+        target.fma(dyPx * k, up)
     }
 
     fun zoom(wheelDelta: Float) {
@@ -47,8 +47,10 @@ class Camera {
         Matrix4f().perspective(Math.toRadians(fovDeg.toDouble()).toFloat(), aspect, near, far)
 
     private fun eyePosition(): Vector3f {
-        val cp = cos(pitch); val sp = sin(pitch)
-        val cy = cos(yaw);   val sy = sin(yaw)
+        val cp = cos(pitch);
+        val sp = sin(pitch)
+        val cy = cos(yaw);
+        val sy = sin(yaw)
         val dir = Vector3f(cp * sy, sp, cp * cy)
         return Vector3f(target).fma(distance, dir)
     }

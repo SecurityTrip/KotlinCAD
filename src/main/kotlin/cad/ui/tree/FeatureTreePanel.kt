@@ -34,7 +34,7 @@ fun FeatureTreePanel(vm: AppViewModel, modifier: Modifier = Modifier) {
                 items(items, key = { it.id.value }) { f ->
                     val isSelected = f.id == selection
                     val bg = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                             else Color.Transparent
+                    else Color.Transparent
                     Text(
                         text = labelFor(f),
                         modifier = Modifier

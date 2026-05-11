@@ -1,7 +1,6 @@
 package cad.domain.tree
 
 import cad.domain.command.Command
-import cad.domain.feature.Feature
 import cad.domain.feature.FeatureId
 
 /**
@@ -63,6 +62,7 @@ class FeatureTree {
                     TreeSnapshot(newOrder, newFeatures) to setOf(id)
                 }
             }
+
             is Command.UpdateParameter -> {
                 val feature = s.features[command.featureId]
                 val param = feature?.parameters?.get(command.parameterName)
@@ -77,6 +77,7 @@ class FeatureTree {
                     newSnap to dirty
                 }
             }
+
             is Command.DeleteFeature -> {
                 if (command.featureId !in s.features) {
                     s to emptySet()
@@ -88,6 +89,7 @@ class FeatureTree {
                     TreeSnapshot(newOrder, newFeatures) to toRemove
                 }
             }
+
             is Command.ReorderFeatures -> {
                 if (command.newOrder.toSet() != s.order.toSet()) {
                     s to emptySet()

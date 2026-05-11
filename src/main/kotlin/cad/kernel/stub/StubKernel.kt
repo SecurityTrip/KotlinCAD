@@ -24,6 +24,7 @@ class StubKernel : Kernel {
             val d = feature.depth.toFloat()
             Primitives.cube(w, h, d)
         }
+
         is Feature.Sketch -> Mesh.EMPTY
         is Feature.Revolve -> Primitives.cube(1f, 1f, 1f)
         is Feature.BooleanFeature -> {

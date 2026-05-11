@@ -10,10 +10,10 @@ internal object GridMesh {
             val p = i * step
             // Параллельные оси X (меняется Z)
             lines += -extent; lines += 0f; lines += p
-            lines +=  extent; lines += 0f; lines += p
+            lines += extent; lines += 0f; lines += p
             // Параллельные оси Z (меняется X)
             lines += p; lines += 0f; lines += -extent
-            lines += p; lines += 0f; lines +=  extent
+            lines += p; lines += 0f; lines += extent
         }
         return lines.toFloatArray()
     }

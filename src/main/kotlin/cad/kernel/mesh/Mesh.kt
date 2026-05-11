@@ -35,8 +35,12 @@ class MeshBuilder {
         bx: Float, by: Float, bz: Float,
         cx: Float, cy: Float, cz: Float,
     ) {
-        val ux = bx - ax; val uy = by - ay; val uz = bz - az
-        val vx = cx - ax; val vy = cy - ay; val vz = cz - az
+        val ux = bx - ax;
+        val uy = by - ay;
+        val uz = bz - az
+        val vx = cx - ax;
+        val vy = cy - ay;
+        val vz = cz - az
         var nx = uy * vz - uz * vy
         var ny = uz * vx - ux * vz
         var nz = ux * vy - uy * vx

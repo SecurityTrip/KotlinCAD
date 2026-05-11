@@ -10,6 +10,7 @@ sealed interface Command {
         val parameterName: String,
         val newValue: Double,
     ) : Command
+
     data class DeleteFeature(val featureId: FeatureId) : Command
     data class ReorderFeatures(val newOrder: List<FeatureId>) : Command
 }
