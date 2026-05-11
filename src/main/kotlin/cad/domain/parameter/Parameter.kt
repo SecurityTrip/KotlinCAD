@@ -6,9 +6,14 @@ import kotlinx.serialization.Serializable
 data class Parameter(
     val name: String,
     val value: Double,
-    // TODO(formulas): пока только числовые значения. Когда добавим выражения,
-    // здесь будет AST + ссылки на другие параметры через граф зависимостей.
+    /**
+     * Если задано — значение параметра вычисляется через [Evaluator] от
+     * других параметров (ссылки — простые имена). Парсинг ленив через [parsedFormula].
+     */
     val formula: String? = null,
 ) {
     fun withValue(newValue: Double): Parameter = copy(value = newValue)
+
+    /** Парсит [formula] один раз; кидает [ExprParseException] при синтаксической ошибке. */
+    fun parsedFormula(): Expr? = formula?.let { ExprParser.parse(it) }
 }

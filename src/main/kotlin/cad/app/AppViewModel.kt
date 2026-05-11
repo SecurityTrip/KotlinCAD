@@ -108,6 +108,10 @@ class AppViewModel(
         dispatch(Command.UpdateParameter(featureId, name, newValue))
     }
 
+    fun setParameterFormula(featureId: FeatureId, name: String, formula: String?) {
+        dispatch(Command.SetParameterFormula(featureId, name, formula))
+    }
+
     /**
      * Экспорт меша выделенной фичи в STL. Возвращает null, если экспортировать
      * нечего (нет выделения или фича не образует mesh).

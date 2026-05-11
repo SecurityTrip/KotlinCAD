@@ -11,6 +11,16 @@ sealed interface Command {
         val newValue: Double,
     ) : Command
 
+    /**
+     * Установить формулу для параметра. `null` или пустая строка — снять
+     * формулу (параметр становится литералом с текущим [Parameter.value]).
+     */
+    data class SetParameterFormula(
+        val featureId: FeatureId,
+        val parameterName: String,
+        val formula: String?,
+    ) : Command
+
     data class DeleteFeature(val featureId: FeatureId) : Command
     data class ReorderFeatures(val newOrder: List<FeatureId>) : Command
 }
