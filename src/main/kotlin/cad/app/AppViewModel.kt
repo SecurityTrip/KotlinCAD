@@ -88,6 +88,23 @@ class AppViewModel(
         dispatch(Command.UpdateParameter(featureId, name, newValue))
     }
 
+    /**
+     * Экспорт меша выделенной фичи в STL. Возвращает null, если экспортировать
+     * нечего (нет выделения или фича не образует mesh).
+     */
+    fun exportSelectionToStl(path: java.nio.file.Path): java.nio.file.Path? {
+        val sel = _selection.value ?: return null
+        val feature = _snapshot.value.features[sel] ?: return null
+        val mesh = kernel.tessellate(feature, _snapshot.value)
+        if (mesh.indices.isEmpty()) {
+            log.warn("Selected feature {} produced empty mesh; nothing to export", feature.id.value)
+            return null
+        }
+        cad.io_.StlWriter.writeBinary(mesh, path, name = feature.name)
+        log.info("Exported {} → {}", feature.id.value, path)
+        return path
+    }
+
     private fun refreshFromTree(snap: TreeSnapshot) {
         _snapshot.value = snap
         _canUndo.value = tree.canUndo()

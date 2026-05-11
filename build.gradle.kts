@@ -68,6 +68,74 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// jextract task — генерирует Java-биндинги для manifoldc.h, если:
+//   1. установлен jextract (есть в PATH),
+//   2. в репо лежит native/include/manifoldc.h.
+// Иначе — пропускается с предупреждением, чтобы билд оставался работоспособным
+// без нативной части (StubKernel-only mode).
+val jextractIncludeDir = layout.projectDirectory.dir("native/include")
+val jextractHeader = jextractIncludeDir.file("manifold/manifoldc.h")
+val jextractOutDir = layout.buildDirectory.dir("generated/sources/jextract/java")
+
+val jextract by tasks.registering {
+    val header = jextractHeader.asFile
+    outputs.dir(jextractOutDir)
+
+    onlyIf {
+        if (!header.exists()) {
+            logger.warn("jextract: header not found at {}, skipping (Manifold integration disabled)", header)
+            return@onlyIf false
+        }
+        val exe = findJextract()
+        if (exe == null) {
+            logger.warn(
+                "jextract: executable not found in PATH or JEXTRACT_HOME, skipping. " +
+                        "Install jextract and re-run."
+            )
+            return@onlyIf false
+        }
+        true
+    }
+
+    doLast {
+        val out = jextractOutDir.get().asFile
+        out.mkdirs()
+        val jextractExe = findJextract() ?: error("jextract disappeared between onlyIf and doLast")
+        exec {
+            commandLine(
+                jextractExe.absolutePath,
+                "--output", out.absolutePath,
+                "--target-package", "cad.native_.manifold",
+                "--header-class-name", "Manifoldc",
+                "-l", "manifoldc",
+                "-I", jextractIncludeDir.asFile.absolutePath,
+                header.absolutePath,
+            )
+        }
+    }
+}
+
+fun findJextract(): File? {
+    val exeName = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "jextract.bat" else "jextract"
+    System.getenv("JEXTRACT_HOME")?.let { home ->
+        val f = file("$home/bin/$exeName")
+        if (f.exists()) return f
+    }
+    val pathDirs = System.getenv("PATH")?.split(File.pathSeparator).orEmpty()
+    for (d in pathDirs) {
+        val f = file("$d/$exeName")
+        if (f.exists()) return f
+    }
+    return null
+}
+
+sourceSets.main {
+    java.srcDir(jextractOutDir)
+}
+
+tasks.named("compileKotlin") { dependsOn(jextract) }
+tasks.named("compileJava") { dependsOn(jextract) }
+
 compose.desktop {
     application {
         mainClass = "cad.app.MainKt"

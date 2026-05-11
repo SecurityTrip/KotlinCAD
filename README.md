@@ -48,10 +48,10 @@ cad/
 ├── app/        — Compose Application, DI, ViewModel
 ├── ui/         — Compose UI (viewport / tree / inspector / toolbar)
 ├── domain/     — чистая модель (Feature, Parameter, Command, FeatureTree)
-├── kernel/     — Kernel interface + StubKernel + ManifoldKernel (TODO)
+├── kernel/     — Kernel interface + StubKernel + ManifoldKernel (skeleton, needs jextract)
 ├── render/     — LWJGL: Camera, GlRenderer, Shaders, SceneState
-├── io_/        — TODO (STL/OBJ export, project format)
-└── native_/    — TODO (jextract bindings для manifoldc)
+├── io_/        — StlWriter (binary). OBJ + project JSON — TODO
+└── native_/    — NativeLoader (распаковка manifoldc.dll). jextract bindings — генерируются
 ```
 
 Принципы:
@@ -63,48 +63,54 @@ cad/
 
 | Где | Что |
 |---|---|
-| `cad.kernel.manifold.ManifoldKernel` | пустой класс с большим KDoc-планом интеграции |
+| `cad.kernel.manifold.ManifoldKernel.extrude/boolean` | каркас + integration plan в KDoc; реальные Panama-вызовы появятся после jextract |
 | `cad.kernel.stub.StubKernel.boolean` | no-op, возвращает `a` |
 | `cad.domain.parameter.Parameter.formula` | поле есть, но парсер/граф формул не написан |
-| `cad.io_` | пусто; нужны STL/OBJ export и JSON-сериализация проекта |
-| `cad.native_` | пусто; нужны jextract-биндинги для `manifoldc.h` |
+| `cad.io_` | STL writer есть; OBJ + project JSON — TODO |
 
-## Следующие шаги
+## Phase 1 — реальная геометрия
 
-1. **Собрать `manifoldc`.**
-   ```
-   git clone https://github.com/elalish/manifold.git
-   cmake -S manifold -B manifold/build -DMANIFOLD_C_API=ON -DCMAKE_BUILD_TYPE=Release
-   cmake --build manifold/build --config Release
-   ```
-   Получишь `manifoldc.dll` / `libmanifoldc.so` + заголовок `manifoldc.h`.
-   Положи бинарники в `src/main/resources/native/<os>-<arch>/`, заголовок — в
-   `native/include/` (вне sourceSets).
+Полный roadmap — в [ROADMAP.md](ROADMAP.md). Phase 1 = подключить
+[elalish/manifold](https://github.com/elalish/manifold) через Panama FFI.
 
-2. **Запустить jextract** (входит в JDK 22+, отдельная тулза в `jextract/bin`):
-   ```
-   jextract \
-     --output build/generated/sources/jextract \
-     --target-package cad.native_.manifold \
-     --header-class-name Manifoldc \
-     native/include/manifoldc.h
-   ```
-   Подключить сгенерированный каталог в Kotlin sourceSets (`build.gradle.kts`).
+### 1. Собрать `manifoldc`
+Под Windows проще всего через vcpkg (он притянет `glm`, `clipper2`, `tbb`):
 
-3. **Реализовать `ManifoldKernel`** поверх биндингов: `extrude`, `boolean`,
-   `tessellate` (вычитать `manifold_to_meshgl` → `Mesh`). Перевязать DI:
-   `single<Kernel> { ManifoldKernel(...) }`.
+```powershell
+git clone https://github.com/elalish/manifold.git
+cd manifold
+cmake -B build -DMANIFOLD_C_API=ON -DCMAKE_BUILD_TYPE=Release `
+      -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --config Release --target manifoldc
+```
 
-4. **2D sketch-редактор**: оверлей на плоскости sketch'а, отображение
-   `SketchEntity`, добавление прямоугольников/кругов мышью, привязки —
-   простейшие (snap to grid).
+Положи:
+- `build/bin/Release/manifoldc.dll` → `src/main/resources/native/windows-x86_64/manifoldc.dll`
+- `bindings/c/include/manifold/manifoldc.h` → `native/include/manifoldc.h`
 
-5. **Парсер формул для `Parameter`**: топологический пересчёт через граф
-   зависимостей (отдельный от feature-deps).
+### 2. Установить jextract
+Отдельная тулза из проекта Panama: <https://jdk.java.net/jextract/>. Распаковать,
+добавить в `PATH` или прописать `JEXTRACT_HOME`.
 
-6. **STL/OBJ export** в `cad.io_`. Это даст возможность тестировать ядро
-   против стороннего viewer (например, MeshLab) до того, как ManifoldKernel
-   полностью оживёт.
+### 3. Сгенерировать биндинги
+```
+gradlew jextract
+```
+Таск автоматически вызывает `jextract` с правильными аргументами. Если заголовок
+или сам `jextract` не найдены — таск пишет warning и пропускается, билд
+продолжается на StubKernel.
+
+### 4. Дореализовать `ManifoldKernel`
+В файле [ManifoldKernel.kt](src/main/kotlin/cad/kernel/manifold/ManifoldKernel.kt)
+методы `extrude`/`boolean` пока кидают `TODO`. После генерации биндингов
+вписать вызовы `Manifoldc.manifold_extrude(...)` по KDoc-плану.
+
+DI сам подхватит `ManifoldKernel`, если конструктор не упадёт (т.е. DLL
+загрузилась И jextract-биндинги на classpath). Иначе — StubKernel.
+
+### 5. Экспорт STL
+Уже работает: выдели фичу в дереве → кнопка **Export STL**. На StubKernel
+получишь куб; после Phase 1 — настоящий extrude.
 
 ## Известные ограничения
 
