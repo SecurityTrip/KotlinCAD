@@ -5,6 +5,13 @@ import cad.domain.feature.FeatureId
 
 sealed interface Command {
     data class AddFeature(val feature: Feature, val atIndex: Int? = null) : Command
+
+    /** Заменяет полный список entities у Sketch — мы не пытаемся диффить отдельные сущности. */
+    data class UpdateSketchEntities(
+        val sketchId: FeatureId,
+        val newEntities: List<cad.domain.feature.SketchEntity>,
+    ) : Command
+
     data class UpdateParameter(
         val featureId: FeatureId,
         val parameterName: String,

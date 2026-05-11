@@ -163,11 +163,28 @@ Section "Copying artifacts into project"
 Copy-Item $ManifoldDll (Join-Path $NativeDir "manifoldc.dll") -Force
 Write-Host "DLL -> $NativeDir\manifoldc.dll"
 
-# tbb runtime: manifoldc links against TBB; copy alongside.
-$dllDir = Split-Path $ManifoldDll -Parent
-Get-ChildItem -Path $dllDir -Filter "tbb*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $NativeDir $_.Name) -Force
-    Write-Host "DLL -> $NativeDir\$($_.Name)"
+# manifoldc.dll is a thin C wrapper; the heavy lifting is in manifold.dll.
+$manifoldMain = Get-ChildItem -Path $ManifoldBuildDir -Recurse -Filter manifold.dll -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch 'manifoldc' } |
+    Select-Object -First 1
+if ($manifoldMain) {
+    Copy-Item $manifoldMain.FullName (Join-Path $NativeDir $manifoldMain.Name) -Force
+    Write-Host "DLL -> $NativeDir\$($manifoldMain.Name)"
+}
+
+# tbb runtime: manifoldc links against TBB. With vcpkg the DLLs live in
+# installed/x64-windows/bin, not next to manifoldc.dll. Search both locations.
+$tbbCandidates = @(
+    Split-Path $ManifoldDll -Parent
+    Join-Path $VcpkgRoot "installed\$VcpkgTriplet\bin"
+)
+foreach ($dir in $tbbCandidates) {
+    if (Test-Path $dir) {
+        Get-ChildItem -Path $dir -Filter "tbb*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $NativeDir $_.Name) -Force
+            Write-Host "DLL -> $NativeDir\$($_.Name)"
+        }
+    }
 }
 
 $headerRoot = Join-Path $ManifoldDir "bindings\c\include"

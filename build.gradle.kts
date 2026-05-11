@@ -117,10 +117,15 @@ val jextract by tasks.registering {
 
 fun findJextract(): File? {
     val exeName = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "jextract.bat" else "jextract"
+    // 1. Persistent install via setup-manifold.ps1
+    val bundled = file("tools/jextract/bin/$exeName")
+    if (bundled.exists()) return bundled
+    // 2. Env var (set by current shell session)
     System.getenv("JEXTRACT_HOME")?.let { home ->
         val f = file("$home/bin/$exeName")
         if (f.exists()) return f
     }
+    // 3. PATH
     val pathDirs = System.getenv("PATH")?.split(File.pathSeparator).orEmpty()
     for (d in pathDirs) {
         val f = file("$d/$exeName")

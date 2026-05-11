@@ -91,8 +91,14 @@ private class CanvasHolder(
         val c = canvas
         if (c != null) {
             SwingUtilities.invokeLater {
-                c.runInContext {
-                    renderer?.dispose()
+                // К этому моменту JAWT-поверхность канваса уже могла быть закрыта
+                // Compose'ом (SwingPanel сам отвязывает peer). Тогда runInContext
+                // бросит JAWT_DrawingSurface_Lock — gl-ресурсы всё равно уйдут вместе
+                // с контекстом, нам нечего тут чистить. Глотаем.
+                try {
+                    c.runInContext { renderer?.dispose() }
+                } catch (t: Throwable) {
+                    log.debug("GL dispose skipped: {}", t.message)
                 }
             }
         }

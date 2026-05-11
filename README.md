@@ -73,44 +73,76 @@ cad/
 Полный roadmap — в [ROADMAP.md](ROADMAP.md). Phase 1 = подключить
 [elalish/manifold](https://github.com/elalish/manifold) через Panama FFI.
 
-### 1. Собрать `manifoldc`
-Под Windows проще всего через vcpkg (он притянет `glm`, `clipper2`, `tbb`):
+### Автоматическая настройка (Windows)
+
+Всё, что описано ниже, делает один скрипт:
 
 ```powershell
-git clone https://github.com/elalish/manifold.git
-cd manifold
-cmake -B build -DMANIFOLD_C_API=ON -DCMAKE_BUILD_TYPE=Release `
-      -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-cmake --build build --config Release --target manifoldc
+# из корня репозитория
+scripts\setup-manifold.ps1 -ManifoldTag v3.0.1
 ```
 
-Положи:
-- `build/bin/Release/manifoldc.dll` → `src/main/resources/native/windows-x86_64/manifoldc.dll`
-- `bindings/c/include/manifold/manifoldc.h` → `native/include/manifoldc.h`
+Что он делает по шагам:
+1. Клонит и бутстрапит vcpkg в `tools/vcpkg/` (использует существующий
+   `$env:VCPKG_ROOT`, если задан).
+2. Ставит зависимости: `clipper2`, `glm`, `tbb`.
+3. Клонит manifold (фиксированный тег), конфигурит CMake с
+   `-DMANIFOLD_C_API=ON -DMANIFOLD_DOWNLOADS=OFF` и собирает `manifoldc`.
+4. Копирует все нужные DLL в `src/main/resources/native/windows-x86_64/`:
+   - `manifoldc.dll` — C-API wrapper
+   - `manifold.dll` — основная либа
+   - `tbb12.dll`, `tbbmalloc.dll`, `tbbmalloc_proxy.dll` — runtime-зависимости
+5. Копирует заголовки в `native/include/manifold/` и патчит K&R-объявления
+   `()` → `(void)`, чтобы jextract не делал из них variadic-инвокеры.
+6. Скачивает jextract в `tools/jextract/` (с `https://jdk.java.net/jextract/`).
+7. Запускает `gradlew jextract` — генерирует Java-биндинги в
+   `build/generated/sources/jextract/java/cad/native_/manifold/`.
 
-### 2. Установить jextract
-Отдельная тулза из проекта Panama: <https://jdk.java.net/jextract/>. Распаковать,
-добавить в `PATH` или прописать `JEXTRACT_HOME`.
+**Требования к окружению:** Visual Studio 2022 Build Tools с workload
+"Desktop development with C++", `git` и `cmake` в PATH. Запускай из
+**x64 Native Tools Command Prompt for VS** (или из PowerShell, открытого
+из этой консоли) — иначе CMake может не найти MSVC-компилятор.
 
-### 3. Сгенерировать биндинги
+Параметры скрипта:
+- `-ManifoldTag <tag>` — версия manifold (default: `main`; для воспроизводимости
+  лучше фиксированный тег).
+- `-VcpkgRoot <path>` — путь к существующему vcpkg.
+- `-JextractUrl <url>` — если default-ссылка устарела, актуальную найдёшь
+  на <https://jdk.java.net/jextract/>.
+- `-Force` — пересобрать manifoldc, даже если DLL уже есть.
+- `-SkipJextract` — не качать jextract (если уже стоит в PATH).
+
+После прогона `gradlew run` в логах должно быть:
 ```
-gradlew jextract
+INFO NativeLoader - Manifold loaded: ...\manifoldc.dll
+INFO ManifoldKernel - ManifoldKernel ready
+INFO cad.app.Kernel - Kernel: ManifoldKernel
 ```
-Таск автоматически вызывает `jextract` с правильными аргументами. Если заголовок
-или сам `jextract` не найдены — таск пишет warning и пропускается, билд
-продолжается на StubKernel.
 
-### 4. Дореализовать `ManifoldKernel`
-В файле [ManifoldKernel.kt](src/main/kotlin/cad/kernel/manifold/ManifoldKernel.kt)
-методы `extrude`/`boolean` пока кидают `TODO`. После генерации биндингов
-вписать вызовы `Manifoldc.manifold_extrude(...)` по KDoc-плану.
+Если вместо этого `Falling back to StubKernel: ... Can't find dependent libraries` —
+не хватает какой-то DLL. Посмотреть зависимости вручную:
+```powershell
+& "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" `
+    -dependents src\main\resources\native\windows-x86_64\manifoldc.dll
+```
+Найди недостающую и закинь в ту же папку.
 
-DI сам подхватит `ManifoldKernel`, если конструктор не упадёт (т.е. DLL
-загрузилась И jextract-биндинги на classpath). Иначе — StubKernel.
+### Что внутри (на случай ручного шага)
 
-### 5. Экспорт STL
-Уже работает: выдели фичу в дереве → кнопка **Export STL**. На StubKernel
-получишь куб; после Phase 1 — настоящий extrude.
+- **Биндинги** — `build/generated/sources/jextract/java/cad/native_/manifold/`.
+  Сгенерированные `Manifoldc.java`, `ManifoldVec2.java` и т.д. в репо не
+  коммитятся — `gradle clean` их стирает, после клина нужно
+  `gradlew jextract`.
+- **Реализация** — [ManifoldFfi.kt](src/main/kotlin/cad/kernel/manifold/ManifoldFfi.kt)
+  (low-level Panama wrapper) и [ManifoldKernel.kt](src/main/kotlin/cad/kernel/manifold/ManifoldKernel.kt)
+  (реализация интерфейса `Kernel`).
+- **Fallback** — если DLL/биндинги недоступны, DI откатывается на
+  `StubKernel`. Он умеет настоящий extrude по полигону, но `boolean` у
+  него no-op.
+
+### Экспорт STL
+Выдели фичу в дереве → кнопка **Export STL** → JFileChooser. Открывается
+в MeshLab/Blender для валидации.
 
 ## Известные ограничения
 

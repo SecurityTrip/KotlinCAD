@@ -24,5 +24,16 @@ data class Profile2D(
                 closed = true,
             )
         }
+
+        /** Полигональная аппроксимация окружности. 32 сегмента — компромисс между гладкостью и числом треугольников. */
+        fun circle(centerX: Double, centerY: Double, radius: Double, segments: Int = 32): Profile2D {
+            require(segments >= 3) { "circle needs at least 3 segments" }
+            val pts = ArrayList<Point2D>(segments)
+            for (i in 0 until segments) {
+                val a = i * 2.0 * Math.PI / segments
+                pts += Point2D(centerX + radius * kotlin.math.cos(a), centerY + radius * kotlin.math.sin(a))
+            }
+            return Profile2D(pts, closed = true)
+        }
     }
 }

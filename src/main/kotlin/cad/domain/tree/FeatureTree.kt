@@ -91,6 +91,18 @@ class FeatureTree {
 
             is Command.SetParameterFormula -> applySetFormula(s, command)
 
+            is Command.UpdateSketchEntities -> {
+                val feature = s.features[command.sketchId] as? Feature.Sketch
+                if (feature == null || feature.entities == command.newEntities) {
+                    s to emptySet()
+                } else {
+                    val updated = feature.copy(entities = command.newEntities)
+                    val newSnap = s.copy(features = s.features + (feature.id to updated))
+                    val dirty = setOf(feature.id) + DependencyGraph.downstreamOf(feature.id, newSnap)
+                    newSnap to dirty
+                }
+            }
+
             is Command.DeleteFeature -> {
                 if (command.featureId !in s.features) {
                     s to emptySet()

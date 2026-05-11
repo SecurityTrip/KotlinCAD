@@ -6,6 +6,7 @@ import cad.domain.command.Command
 import cad.domain.feature.Feature
 import cad.domain.feature.FeatureId
 import cad.domain.feature.SketchEntity
+import cad.domain.feature.SketchEntity as DomainSketchEntity
 import cad.domain.feature.SketchPlane
 import cad.domain.parameter.Parameter
 import cad.domain.tree.FeatureTree
@@ -14,6 +15,7 @@ import cad.kernel.Kernel
 import cad.kernel.mesh.Mesh
 import cad.render.SceneMesh
 import cad.render.SceneState
+import cad.ui.sketch.SketchTool
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
@@ -40,6 +42,25 @@ class AppViewModel(
 
     private val _canRedo = mutableStateOf(false)
     val canRedo: State<Boolean> = _canRedo
+
+    private val _sketchMode = mutableStateOf(false)
+
+    /**
+     * true → viewport показывает 2D-канвас для текущего выделенного Sketch.
+     * Включается кнопкой «Edit Sketch» в toolbar, выключается «Done».
+     */
+    val sketchMode: State<Boolean> = _sketchMode
+
+    private val _activeTool = mutableStateOf(SketchTool.SELECT)
+    val activeTool: State<SketchTool> = _activeTool
+
+    /** Текущий редактируемый Sketch, или null. */
+    val activeSketch: Feature.Sketch?
+        get() {
+            if (!_sketchMode.value) return null
+            val id = _selection.value ?: return null
+            return _snapshot.value.features[id] as? Feature.Sketch
+        }
 
     /**
      * Кэш меша на фичу. Ключ — featureId; значение — пара (hashCode фичи, mesh).
@@ -69,6 +90,30 @@ class AppViewModel(
     fun select(id: FeatureId?) {
         _selection.value = id
         sceneState.setSelection(id)
+    }
+
+    /** Создать пустой Sketch (без Extrude). Удобно когда хочешь нарисовать что-то с нуля. */
+    fun addEmptySketch() {
+        val id = FeatureId(UUID.randomUUID().toString())
+        val sketch = Feature.Sketch(
+            id = id,
+            name = "Sketch ${shortLabel(id)}",
+            plane = SketchPlane.XZ,
+            entities = emptyList(),
+        )
+        dispatch(Command.AddFeature(sketch))
+        select(id)
+    }
+
+    fun deleteSelected() {
+        val id = _selection.value ?: return
+        dispatch(Command.DeleteFeature(id))
+    }
+
+    fun clearActiveSketch() {
+        val sketch = activeSketch ?: return
+        if (sketch.entities.isEmpty()) return
+        dispatch(Command.UpdateSketchEntities(sketch.id, emptyList()))
     }
 
     fun addBox() {
@@ -112,6 +157,33 @@ class AppViewModel(
         dispatch(Command.SetParameterFormula(featureId, name, formula))
     }
 
+    // === Sketch mode =====================================================
+
+    fun enterSketchMode() {
+        val id = _selection.value ?: return
+        if (_snapshot.value.features[id] !is Feature.Sketch) return
+        _sketchMode.value = true
+        _activeTool.value = SketchTool.SELECT
+    }
+
+    fun exitSketchMode() {
+        _sketchMode.value = false
+    }
+
+    fun setActiveTool(tool: SketchTool) {
+        _activeTool.value = tool
+    }
+
+    fun addSketchEntity(entity: DomainSketchEntity) {
+        val sketch = activeSketch ?: return
+        dispatch(Command.UpdateSketchEntities(sketch.id, sketch.entities + entity))
+    }
+
+    fun replaceSketchEntities(entities: List<DomainSketchEntity>) {
+        val sketch = activeSketch ?: return
+        dispatch(Command.UpdateSketchEntities(sketch.id, entities))
+    }
+
     /**
      * Экспорт меша выделенной фичи в STL. Возвращает null, если экспортировать
      * нечего (нет выделения или фича не образует mesh).
@@ -135,6 +207,7 @@ class AppViewModel(
         _canRedo.value = tree.canRedo()
         if (_selection.value != null && _selection.value !in snap.features) {
             _selection.value = null
+            _sketchMode.value = false
         }
         rebuildScene(snap)
     }
@@ -159,7 +232,7 @@ class AppViewModel(
 
     /** Возвращает меш фичи (из кэша или вычислив заново) + recomputed-флаг. */
     private fun meshForTracked(feature: Feature, snap: TreeSnapshot): Pair<Mesh, Boolean> {
-        val hash = feature.hashCode()
+        val hash = effectiveHash(feature, snap)
         val cached = meshCache[feature.id]
         if (cached != null && cached.featureHash == hash) {
             return cached.mesh to false
@@ -167,6 +240,25 @@ class AppViewModel(
         val mesh = kernel.tessellate(feature, snap)
         meshCache[feature.id] = MeshCacheEntry(hash, mesh)
         return mesh to true
+    }
+
+    /**
+     * Хэш фичи + всех её транзитивных ссылок. Без этого меш Extrude'а не
+     * пересчитывался при правке Sketch'а: Extrude хранит только sketchId,
+     * его собственный hashCode при изменении entities скетча не меняется.
+     */
+    private fun effectiveHash(feature: Feature, snap: TreeSnapshot): Int {
+        var h = feature.hashCode()
+        val visited = HashSet<FeatureId>()
+        val stack = ArrayDeque(feature.referencedFeatures())
+        while (stack.isNotEmpty()) {
+            val id = stack.removeLast()
+            if (!visited.add(id)) continue
+            val ref = snap.features[id] ?: continue
+            h = 31 * h + ref.hashCode()
+            stack.addAll(ref.referencedFeatures())
+        }
+        return h
     }
 
     private fun meshFor(feature: Feature, snap: TreeSnapshot): Mesh = meshForTracked(feature, snap).first

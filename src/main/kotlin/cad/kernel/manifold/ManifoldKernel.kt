@@ -37,6 +37,13 @@ class ManifoldKernel : Kernel {
         require(jextractBindingsPresent()) {
             "jextract bindings (cad.native_.manifold.Manifoldc) not on classpath. " + "Run `gradlew jextract` after placing native/include/manifold/manifoldc.h."
         }
+        log.info(
+            "Manifold sizes: simple_polygon={}, polygons={}, manifold={}, meshgl={}",
+            cad.native_.manifold.Manifoldc.manifold_simple_polygon_size(),
+            cad.native_.manifold.Manifoldc.manifold_polygons_size(),
+            cad.native_.manifold.Manifoldc.manifold_manifold_size(),
+            cad.native_.manifold.Manifoldc.manifold_meshgl_size(),
+        )
         log.info("ManifoldKernel ready")
     }
 
@@ -70,8 +77,8 @@ class ManifoldKernel : Kernel {
 
     override fun extrude(profile: Profile2D, depth: Double): Mesh = wrap {
         Arena.ofConfined().use { arena ->
-            val cs = ManifoldFfi.crossSectionFromSimplePolygon(arena, profile)
-            val m = ManifoldFfi.extrude(arena, cs, depth)
+            val polygons = ManifoldFfi.polygonsFromSimplePolygon(arena, profile)
+            val m = ManifoldFfi.extrude(arena, polygons, depth)
             try {
                 ManifoldFfi.toMesh(arena, m)
             } finally {
@@ -99,10 +106,16 @@ class ManifoldKernel : Kernel {
     }
 
     private fun sketchToProfile(sketch: Feature.Sketch): Profile2D? {
-        // MVP: первый Rectangle → Profile2D.rectangle. Когда появятся настоящие
-        // sketches с несколькими entities — собирать polygon из их объединения.
-        val rect = sketch.entities.filterIsInstance<SketchEntity.Rectangle>().firstOrNull() ?: return null
-        return Profile2D.rectangle(rect.centerX, rect.centerY, rect.width, rect.height)
+        // MVP: первая Rectangle/Circle берётся как профиль extrude. Полноценную
+        // сборку polygon из множества entity (с дырками, объединениями линий)
+        // делаем в Phase 3 — там нужны honest constraints/boolean на 2D.
+        return sketch.entities.firstNotNullOfOrNull { e ->
+            when (e) {
+                is SketchEntity.Rectangle -> Profile2D.rectangle(e.centerX, e.centerY, e.width, e.height)
+                is SketchEntity.Circle -> Profile2D.circle(e.centerX, e.centerY, e.radius)
+                is SketchEntity.Line -> null
+            }
+        }
     }
 
     private inline fun wrap(block: () -> Mesh): Mesh = try {

@@ -2,6 +2,7 @@ package cad.kernel.manifold
 
 import cad.domain.feature.BoolOp
 import cad.domain.feature.Profile2D
+import cad.kernel.manifold.ManifoldFfi.alignedBuf
 import cad.kernel.manifold.ManifoldFfi.deleteManifold
 import cad.kernel.mesh.Mesh
 import cad.native_.manifold.ManifoldVec2
@@ -21,15 +22,31 @@ import java.lang.foreign.ValueLayout
  *
  * Сторона MeshGL: возвращаемые `vert_properties`/`tri_verts` копируются
  * в Java-arrays и сразу освобождаются.
+ *
+ * ВАЖНО: все placement-new буферы выделяются с явным 16-байтным выравниванием
+ * через [alignedBuf]. Manifold внутри использует SIMD (через TBB/glm), а
+ * `arena.allocate(byteSize)` по умолчанию даёт alignment=1, что приводит к
+ * heap corruption (Windows exit code 0xC0000374).
  */
 internal object ManifoldFfi {
 
-    // === Polygons / CrossSection ==========================================
+    private const val ALIGNMENT = 16L
+    private fun alignedBuf(arena: Arena, byteSize: Long): MemorySegment = arena.allocate(byteSize, ALIGNMENT)
 
-    /** Создаёт CrossSection из одного замкнутого контура. Lifetime — [arena]. */
-    fun crossSectionFromSimplePolygon(arena: Arena, profile: Profile2D): MemorySegment {
+    // === Polygons =========================================================
+
+    /**
+     * Собирает `ManifoldPolygons*` из одного замкнутого контура. Это то, что
+     * принимает `manifold_extrude` (НЕ CrossSection — путать их = heap corruption).
+     *
+     * Структура:
+     *   ManifoldVec2[N] points
+     *   ManifoldSimplePolygon* simple = manifold_simple_polygon(simpleBuf, points, N)
+     *   ManifoldSimplePolygon*[] arr = [simple]
+     *   ManifoldPolygons* poly = manifold_polygons(polyBuf, arr, 1)
+     */
+    fun polygonsFromSimplePolygon(arena: Arena, profile: Profile2D): MemorySegment {
         require(profile.points.isNotEmpty()) { "empty profile" }
-        // ManifoldVec2[points.size]
         val vec2Layout = ManifoldVec2.layout()
         val pts = arena.allocate(vec2Layout, profile.points.size.toLong())
         profile.points.forEachIndexed { i, p ->
@@ -38,27 +55,30 @@ internal object ManifoldFfi {
             ManifoldVec2.y(slot, p.y)
         }
 
-        val polyBuf = arena.allocate(Manifoldc.manifold_simple_polygon_size())
-        val simple = Manifoldc.manifold_simple_polygon(polyBuf, pts, profile.points.size.toLong())
+        val simpleBuf = alignedBuf(arena, Manifoldc.manifold_simple_polygon_size())
+        val simple = Manifoldc.manifold_simple_polygon(simpleBuf, pts, profile.points.size.toLong())
 
-        // FillRule = 0 (EvenOdd) — стандарт для простых замкнутых контуров без дыр.
-        val csBuf = arena.allocate(Manifoldc.manifold_cross_section_size())
-        return Manifoldc.manifold_cross_section_of_simple_polygon(csBuf, simple, 0)
+        // Массив указателей длиной 1: ManifoldSimplePolygon*[]
+        val ptrArr = arena.allocate(ValueLayout.ADDRESS, 1)
+        ptrArr.setAtIndex(ValueLayout.ADDRESS, 0, simple)
+
+        val polyBuf = alignedBuf(arena, Manifoldc.manifold_polygons_size())
+        return Manifoldc.manifold_polygons(polyBuf, ptrArr, 1L)
     }
 
     // === Extrude / Boolean ================================================
 
     /**
-     * Выдавливание 2D-сечения на высоту [depth] вдоль +Y.
+     * Выдавливание `ManifoldPolygons*` на высоту [depth] вдоль +Z.
      * Возвращает manifold-handle; вызывающий обязан позвать [deleteManifold].
      */
-    fun extrude(arena: Arena, cs: MemorySegment, depth: Double): MemorySegment {
-        val buf = arena.allocate(Manifoldc.manifold_manifold_size())
-        return Manifoldc.manifold_extrude(buf, cs, depth, 0, 0.0, 1.0, 1.0)
+    fun extrude(arena: Arena, polygons: MemorySegment, depth: Double): MemorySegment {
+        val buf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
+        return Manifoldc.manifold_extrude(buf, polygons, depth, 0, 0.0, 1.0, 1.0)
     }
 
     fun boolean(arena: Arena, a: MemorySegment, b: MemorySegment, op: BoolOp): MemorySegment {
-        val buf = arena.allocate(Manifoldc.manifold_manifold_size())
+        val buf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
         val code = when (op) {
             BoolOp.UNION -> Manifoldc.MANIFOLD_ADD()
             BoolOp.DIFFERENCE -> Manifoldc.MANIFOLD_SUBTRACT()
@@ -94,9 +114,9 @@ internal object ManifoldFfi {
             triVerts.setAtIndex(ValueLayout.JAVA_INT, i.toLong(), mesh.indices[i])
         }
 
-        val mglBuf = arena.allocate(Manifoldc.manifold_meshgl_size())
+        val mglBuf = alignedBuf(arena, Manifoldc.manifold_meshgl_size())
         val meshgl = Manifoldc.manifold_meshgl(mglBuf, vertProps, nVerts, numProp, triVerts, nTris)
-        val mBuf = arena.allocate(Manifoldc.manifold_manifold_size())
+        val mBuf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
         val manifold = Manifoldc.manifold_of_meshgl(mBuf, meshgl)
         Manifoldc.manifold_delete_meshgl(meshgl)
         return manifold
@@ -106,7 +126,7 @@ internal object ManifoldFfi {
 
     /** Вычитывает MeshGL из manifold-handle и копирует в [Mesh]. */
     fun toMesh(arena: Arena, manifold: MemorySegment): Mesh {
-        val mglBuf = arena.allocate(Manifoldc.manifold_meshgl_size())
+        val mglBuf = alignedBuf(arena, Manifoldc.manifold_meshgl_size())
         val mgl = Manifoldc.manifold_get_meshgl(mglBuf, manifold)
         try {
             val numProp = Manifoldc.manifold_meshgl_num_prop(mgl)
