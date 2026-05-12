@@ -12,8 +12,14 @@ hs_err_pid*
 
 # Phase 1: Manifold + jextract artifacts (regenerable via scripts/setup-manifold.ps1)
 tools/
-native/include/manifold/
+native/*
 src/main/resources/native/
 
 # Plan / scratch
 *.autosave
+.*
+$*
+caches
+daemon
+kotlin-profile
+notifications

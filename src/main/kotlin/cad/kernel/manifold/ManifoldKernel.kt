@@ -37,13 +37,6 @@ class ManifoldKernel : Kernel {
         require(jextractBindingsPresent()) {
             "jextract bindings (cad.native_.manifold.Manifoldc) not on classpath. " + "Run `gradlew jextract` after placing native/include/manifold/manifoldc.h."
         }
-        log.info(
-            "Manifold sizes: simple_polygon={}, polygons={}, manifold={}, meshgl={}",
-            cad.native_.manifold.Manifoldc.manifold_simple_polygon_size(),
-            cad.native_.manifold.Manifoldc.manifold_polygons_size(),
-            cad.native_.manifold.Manifoldc.manifold_manifold_size(),
-            cad.native_.manifold.Manifoldc.manifold_meshgl_size(),
-        )
         log.info("ManifoldKernel ready")
     }
 

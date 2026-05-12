@@ -8,6 +8,8 @@ import cad.kernel.mesh.Mesh
 import cad.native_.manifold.ManifoldVec2
 import cad.native_.manifold.Manifoldc
 import java.lang.foreign.Arena
+import java.lang.foreign.FunctionDescriptor
+import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 
@@ -33,6 +35,28 @@ internal object ManifoldFfi {
     private const val ALIGNMENT = 16L
     private fun alignedBuf(arena: Arena, byteSize: Long): MemorySegment = arena.allocate(byteSize, ALIGNMENT)
 
+    // === Прямой malloc/free для placement-new буферов ====================
+    //
+    // КРИТИЧНО: manifold_delete_*() делает `delete ptr` (через global operator delete = free),
+    // поэтому buf под manifold_cube/cylinder/extrude/simple_polygon/polygons/meshgl ДОЛЖЕН
+    // быть отдельным `malloc`-указателем. Arena.allocate() выдаёт под-области общего блока,
+    // и free на под-области → heap corruption.
+    //
+    // Поэтому такие буферы выделяем через [mallocBuf] и НЕ освобождаем сами — это сделает
+    // manifold_delete_*.
+    private val linker = Linker.nativeLinker()
+    private val mallocHandle = linker.downcallHandle(
+        linker.defaultLookup().find("malloc").orElseThrow {
+            IllegalStateException("malloc not found in default lookup")
+        }, FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG)
+    )
+
+    private fun mallocBuf(byteSize: Long): MemorySegment {
+        val raw = mallocHandle.invokeExact(byteSize) as MemorySegment
+        require(raw.address() != 0L) { "malloc($byteSize) returned NULL" }
+        return raw.reinterpret(byteSize)
+    }
+
     // === Polygons =========================================================
 
     /**
@@ -55,15 +79,29 @@ internal object ManifoldFfi {
             ManifoldVec2.y(slot, p.y)
         }
 
-        val simpleBuf = alignedBuf(arena, Manifoldc.manifold_simple_polygon_size())
+        val simpleBuf = mallocBuf(Manifoldc.manifold_simple_polygon_size())
         val simple = Manifoldc.manifold_simple_polygon(simpleBuf, pts, profile.points.size.toLong())
 
         // Массив указателей длиной 1: ManifoldSimplePolygon*[]
         val ptrArr = arena.allocate(ValueLayout.ADDRESS, 1)
         ptrArr.setAtIndex(ValueLayout.ADDRESS, 0, simple)
 
-        val polyBuf = alignedBuf(arena, Manifoldc.manifold_polygons_size())
+        val polyBuf = mallocBuf(Manifoldc.manifold_polygons_size())
         return Manifoldc.manifold_polygons(polyBuf, ptrArr, 1L)
+    }
+
+    // === Primitives (надёжнее polygon-based extrude) =======================
+
+    /** Box размером [x] × [y] × [z], центрированный в начале координат. */
+    fun box(arena: Arena, x: Double, y: Double, z: Double): MemorySegment {
+        val buf = mallocBuf(Manifoldc.manifold_manifold_size())
+        return Manifoldc.manifold_cube(buf, x, y, z, /* center = */ 1)
+    }
+
+    /** Цилиндр высотой [height], радиусом [radius], сегментов [segments]. */
+    fun cylinder(arena: Arena, height: Double, radius: Double, segments: Int = 32): MemorySegment {
+        val buf = mallocBuf(Manifoldc.manifold_manifold_size())
+        return Manifoldc.manifold_cylinder(buf, height, radius, radius, segments, /* center = */ 1)
     }
 
     // === Extrude / Boolean ================================================
@@ -73,12 +111,12 @@ internal object ManifoldFfi {
      * Возвращает manifold-handle; вызывающий обязан позвать [deleteManifold].
      */
     fun extrude(arena: Arena, polygons: MemorySegment, depth: Double): MemorySegment {
-        val buf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
+        val buf = mallocBuf(Manifoldc.manifold_manifold_size())
         return Manifoldc.manifold_extrude(buf, polygons, depth, 0, 0.0, 1.0, 1.0)
     }
 
     fun boolean(arena: Arena, a: MemorySegment, b: MemorySegment, op: BoolOp): MemorySegment {
-        val buf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
+        val buf = mallocBuf(Manifoldc.manifold_manifold_size())
         val code = when (op) {
             BoolOp.UNION -> Manifoldc.MANIFOLD_ADD()
             BoolOp.DIFFERENCE -> Manifoldc.MANIFOLD_SUBTRACT()
@@ -114,9 +152,9 @@ internal object ManifoldFfi {
             triVerts.setAtIndex(ValueLayout.JAVA_INT, i.toLong(), mesh.indices[i])
         }
 
-        val mglBuf = alignedBuf(arena, Manifoldc.manifold_meshgl_size())
+        val mglBuf = mallocBuf(Manifoldc.manifold_meshgl_size())
         val meshgl = Manifoldc.manifold_meshgl(mglBuf, vertProps, nVerts, numProp, triVerts, nTris)
-        val mBuf = alignedBuf(arena, Manifoldc.manifold_manifold_size())
+        val mBuf = mallocBuf(Manifoldc.manifold_manifold_size())
         val manifold = Manifoldc.manifold_of_meshgl(mBuf, meshgl)
         Manifoldc.manifold_delete_meshgl(meshgl)
         return manifold
@@ -126,7 +164,7 @@ internal object ManifoldFfi {
 
     /** Вычитывает MeshGL из manifold-handle и копирует в [Mesh]. */
     fun toMesh(arena: Arena, manifold: MemorySegment): Mesh {
-        val mglBuf = alignedBuf(arena, Manifoldc.manifold_meshgl_size())
+        val mglBuf = mallocBuf(Manifoldc.manifold_meshgl_size())
         val mgl = Manifoldc.manifold_get_meshgl(mglBuf, manifold)
         try {
             val numProp = Manifoldc.manifold_meshgl_num_prop(mgl)

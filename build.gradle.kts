@@ -89,8 +89,7 @@ val jextract by tasks.registering {
         val exe = findJextract()
         if (exe == null) {
             logger.warn(
-                "jextract: executable not found in PATH or JEXTRACT_HOME, skipping. " +
-                        "Install jextract and re-run."
+                "jextract: executable not found in PATH or JEXTRACT_HOME, skipping. " + "Install jextract and re-run."
             )
             return@onlyIf false
         }
@@ -141,6 +140,12 @@ sourceSets.main {
 tasks.named("compileKotlin") { dependsOn(jextract) }
 tasks.named("compileJava") { dependsOn(jextract) }
 
+// Прокидываем `-Pcad.kernel=manifold` (или системные `-Dcad.*`) в JVM приложения.
+// В Compose run task system properties Gradle'а не наследуются автоматически.
+val cadProps = (project.properties.filterKeys { it.startsWith("cad.") }
+    .mapValues { it.value.toString() } + System.getProperties().entries.filter { it.key.toString().startsWith("cad.") }
+    .associate { it.key.toString() to it.value.toString() })
+
 compose.desktop {
     application {
         mainClass = "cad.app.MainKt"
@@ -148,7 +153,9 @@ compose.desktop {
             "--enable-native-access=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/java.awt.peer=ALL-UNNAMED",
-        )
+            // Принудительно пишем hs_err_pid в корень проекта при нативном краше.
+            "-XX:ErrorFile=${rootDir.absolutePath.replace("\\", "/")}/hs_err_pid%p.log",
+        ) + cadProps.map { (k, v) -> "-D$k=$v" }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "cad"
